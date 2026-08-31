@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Job Search Launcher</title>
+    <meta
+      name="description"
+      content="Lifecycle-only launcher for a private GitHub Codespace."
+    />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brandmark" aria-hidden="true">JS</div>
+          <div>
+            <div class="eyebrow">Private Codespace control</div>
+            <h1>Job Search Launcher</h1>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span id="online-indicator" class="pill" data-tone="neutral">Online</span>
+          <button id="install" class="button secondary compact" hidden type="button">
+            Instalar PWA
+          </button>
+        </div>
+      </header>
+
+      <section id="status" class="status" data-tone="neutral" aria-live="polite">
+        <div class="status-dot" aria-hidden="true"></div>
+        <div>
+          <strong id="status-title">Preparando launcher…</strong>
+          <p id="status-detail">Cargando.</p>
+        </div>
+      </section>
+
+      <section id="auth-card" class="card auth-card" data-connected="false">
+        <div class="card-title">
+          <div>
+            <div class="eyebrow">GitHub API</div>
+            <h2>Sesión de Codespaces</h2>
+          </div>
+          <div class="actions">
+            <button id="refresh" class="button secondary compact" type="button" hidden>
+              Actualizar
+            </button>
+            <button id="disconnect" class="button ghost compact" type="button" hidden>
+              Cerrar sesión local
+            </button>
+          </div>
+        </div>
+
+        <p class="muted">
+          Usa un fine-grained personal access token limitado al repositorio privado del
+          asistente. El token se guarda solo en <code>sessionStorage</code> y nunca se envía
+          al sitio de GitHub Pages.
+        </p>
+
+        <div class="token-row">
+          <label>
+            <span>Fine-grained token</span>
+            <input
+              id="token"
+              type="password"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="github_pat_…"
+            />
+          </label>
+          <button id="connect" class="button primary" type="button">Conectar</button>
+        </div>
+
+        <details class="help">
+          <summary>Permisos mínimos recomendados</summary>
+          <p>
+            Limita el token al repositorio privado del asistente y concede únicamente
+            <strong>Codespaces: Read</strong> y
+            <strong>Codespaces lifecycle admin: Read and write</strong>. No se necesitan
+            permisos de Contents, Issues, Pull requests ni Actions.
+          </p>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="card-title">
+          <div>
+            <div class="eyebrow">Lifecycle</div>
+            <h2>Codespace</h2>
+          </div>
+        </div>
+
+        <label class="select-label">
+          <span>Seleccionado</span>
+          <select id="codespace-select">
+            <option value="">Conecta GitHub para listar Codespaces</option>
+          </select>
+        </label>
+
+        <article id="selected-card" class="codespace-card" hidden>
+          <div class="codespace-main">
+            <div>
+              <div id="selected-repo" class="repo">—</div>
+              <div id="selected-name" class="codespace-name">—</div>
+            </div>
+            <span id="selected-state" class="pill" data-tone="neutral">—</span>
+          </div>
+          <div class="meta-row">
+            <span>Último uso</span>
+            <strong id="selected-last-used">—</strong>
+          </div>
+          <div class="actions lifecycle-actions">
+            <button id="start" class="button primary" type="button" hidden>
+              Iniciar y abrir
+            </button>
+            <button id="open" class="button primary" type="button" hidden>
+              Abrir UI privada
+            </button>
+            <button id="stop" class="button danger" type="button" hidden>
+              Detener Codespace
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <section class="card compact-card">
+        <details>
+          <summary>Configuración avanzada</summary>
+          <div class="advanced">
+            <label>
+              <span>Dominio de forwarded ports</span>
+              <input
+                id="port-domain"
+                type="text"
+                inputmode="url"
+                autocapitalize="off"
+                spellcheck="false"
+                value="app.github.dev"
+              />
+            </label>
+            <button id="save-domain" class="button secondary" type="button">Guardar</button>
+          </div>
+          <p class="muted small">
+            GitHub documenta actualmente <code>app.github.dev</code>. El valor queda solo en
+            este dispositivo para poder adaptarlo si GitHub cambia el dominio.
+          </p>
+        </details>
+      </section>
+
+      <section class="privacy">
+        <strong>Frontera de privacidad</strong>
+        <p>
+          Este sitio público administra únicamente el ciclo de vida del Codespace. No contiene,
+          consulta ni almacena CVs, vacantes, aplicaciones, tracker, documentos ni datos del
+          candidato. Esos datos permanecen en el Codespace privado.
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

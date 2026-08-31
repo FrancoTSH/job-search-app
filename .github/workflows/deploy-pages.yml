@@ -1,0 +1,67 @@
+name: Deploy PWA to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate launcher
+        run: |
+          npm test
+          npm run check
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("site/manifest.webmanifest").read_text())
+          assert manifest["display"] == "standalone"
+          assert manifest["start_url"] == "./"
+          assert manifest["scope"] == "./"
+          sizes = {item["sizes"] for item in manifest["icons"]}
+          assert "192x192" in sizes
+          assert "512x512" in sizes
+          assert any("maskable" in item.get("purpose", "") for item in manifest["icons"])
+          assert "job_search_tracker" not in Path("site/index.html").read_text()
+          assert "candidate-profile" not in Path("site/index.html").read_text()
+          PY
+
+  deploy:
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
