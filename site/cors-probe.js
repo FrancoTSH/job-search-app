@@ -10,6 +10,7 @@ const ui = {
   statusTitle: document.querySelector("#status-title"),
   statusDetail: document.querySelector("#status-detail"),
   getResult: document.querySelector("#get-result"),
+  simplePostResult: document.querySelector("#simple-post-result"),
   postResult: document.querySelector("#post-result"),
 };
 
@@ -95,6 +96,7 @@ async function runProbe() {
   ui.target.textContent = target.url;
   ui.run.disabled = true;
   ui.getResult.textContent = "Ejecutando…";
+  ui.simplePostResult.textContent = "Ejecutando…";
   ui.postResult.textContent = "Ejecutando…";
   setStatus(
     "Probando acceso cross-origin…",
@@ -103,6 +105,7 @@ async function runProbe() {
   );
 
   let getPassed = false;
+  let simplePostPassed = false;
   let postPassed = false;
 
   try {
@@ -131,6 +134,31 @@ async function runProbe() {
       credentials: "include",
       cache: "no-store",
       headers: {
+        "Content-Type": "text/plain;charset=UTF-8",
+      },
+      body: JSON.stringify({ nonce }),
+    });
+    const body = await readBody(response);
+    simplePostPassed =
+      response.ok &&
+      body?.ok === true &&
+      body?.method === "POST" &&
+      body?.requestKind === "text-simple" &&
+      body?.authenticatedEdgeReachedApplication === true &&
+      body?.echoedNonce === nonce;
+    ui.simplePostResult.textContent = formatSuccess(response, body);
+  } catch (error) {
+    ui.simplePostResult.textContent = formatFailure(error);
+  }
+
+  try {
+    const nonce = crypto.randomUUID();
+    const response = await fetch(target.url, {
+      method: "POST",
+      mode: "cors",
+      credentials: "include",
+      cache: "no-store",
+      headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ nonce }),
@@ -149,14 +177,20 @@ async function runProbe() {
 
   if (getPassed && postPassed) {
     setStatus(
-      "CORS privado viable",
-      "El navegador alcanzó el endpoint privado y completó también el preflight del POST.",
+      "CORS privado viable con preflight",
+      "GET y POST JSON cross-origin funcionan; el navegador también completó OPTIONS.",
       "success",
+    );
+  } else if (getPassed && simplePostPassed) {
+    setStatus(
+      "CORS viable solo sin preflight",
+      "GET y POST simple funcionan, pero POST JSON/OPTIONS no. La PWA podría usar una mutación text/plain con Origin estricto.",
+      "warning",
     );
   } else if (getPassed) {
     setStatus(
-      "GET funciona, POST/preflight no",
-      "El proxy deja leer el endpoint, pero la mutación cross-origin no es viable tal como está.",
+      "Solo lectura cross-origin",
+      "GET funciona, pero ninguna variante POST fue utilizable.",
       "danger",
     );
   } else {
