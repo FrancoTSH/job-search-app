@@ -63,7 +63,12 @@ jobs:
           all_text = "\n".join(
               p.read_text(errors="ignore")
               for p in Path(".").rglob("*")
-              if p.is_file() and ".git" not in p.parts and p.suffix != ".png"
+              if (
+                  p.is_file()
+                  and ".git" not in p.parts
+                  and p.suffix != ".png"
+                  and p.name != "phase16-smoke.yml"
+              )
           )
           forbidden = [
               "renatofrancoflores@gmail.com",
