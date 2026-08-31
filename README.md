@@ -1,5 +1,7 @@
 # Job Search Codespace Launcher
 
+Live PWA: https://francotsh.github.io/job-search-app/
+
 Public, static PWA that controls only the lifecycle of a private GitHub Codespace.
 
 ## Privacy boundary
@@ -97,11 +99,7 @@ Real lifecycle calls require a valid GitHub token and are intentionally not exer
 
 The repository includes `.github/workflows/deploy-pages.yml`.
 
-One-time repository setup:
-
-1. repository must be **public**;
-2. Settings -> Pages -> Build and deployment -> Source -> **GitHub Actions**;
-3. push/dispatch the deployment workflow.
+GitHub Pages is enabled for this repository with **GitHub Actions** as the publishing source. Pushes to `main` validate and deploy the static `site/` directory.
 
 The deployment publishes only `site/`.
 
