@@ -1,0 +1,36 @@
+name: Phase 17 public CORS probe smoke
+
+on:
+  push:
+    branches:
+      - phase17-cors-probe
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate launcher and probe syntax
+        run: |
+          npm test
+          npm run check
+          node --check site/cors-probe.js
+
+      - name: Verify probe privacy boundary
+        run: |
+          grep -q 'credentials: "include"' site/cors-probe.js
+          grep -q 'Content-Type": "text/plain' site/cors-probe.js
+          grep -q 'Content-Type": "application/json"' site/cors-probe.js
+          grep -q 'connect-src https://\*.app.github.dev' site/cors-probe.html
+          ! grep -q 'innerHTML' site/cors-probe.js
+          ! grep -q 'Authorization' site/cors-probe.js
+          ! grep -q 'sessionStorage' site/cors-probe.js
+          ! grep -q 'job_search_tracker' site/cors-probe.js
