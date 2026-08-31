@@ -1,4 +1,4 @@
-const CACHE = "job-search-launcher-v1";
+const CACHE = "job-search-launcher-v2";
 
 const ROOT = new URL("./", self.location.href);
 const CORE = [
