@@ -87,9 +87,10 @@
           <summary>Permisos mínimos recomendados</summary>
           <p>
             Limita el token al repositorio privado del asistente y concede únicamente
-            <strong>Codespaces: Read</strong> y
-            <strong>Codespaces lifecycle admin: Read and write</strong>. No se necesitan
-            permisos de Contents, Issues, Pull requests ni Actions.
+            <strong>Codespaces: Read and write</strong> y
+            <strong>Codespaces lifecycle admin: Read and write</strong>. El permiso de
+            Codespaces con escritura se usa únicamente para crear el entorno administrado.
+            No se necesitan permisos de Contents, Issues, Pull requests ni Actions.
           </p>
         </details>
       </section>
@@ -121,6 +122,14 @@
             <span>Último uso</span>
             <strong id="selected-last-used">—</strong>
           </div>
+          <div class="meta-row">
+            <span>Idle timeout</span>
+            <strong id="selected-idle-timeout">—</strong>
+          </div>
+          <div class="meta-row">
+            <span>Máquina</span>
+            <strong id="selected-machine">—</strong>
+          </div>
           <div class="actions lifecycle-actions">
             <button id="start" class="button primary" type="button" hidden>
               Iniciar y abrir
@@ -133,11 +142,46 @@
             </button>
           </div>
         </article>
+
+        <article id="create-card" class="codespace-card" hidden>
+          <div class="codespace-main">
+            <div>
+              <div id="create-repo" class="repo">—</div>
+              <div id="create-detail" class="codespace-name">—</div>
+            </div>
+            <span class="pill" data-tone="warning">150 min</span>
+          </div>
+          <div class="actions lifecycle-actions">
+            <button id="create" class="button secondary" type="button">
+              Crear Codespace de 150 min
+            </button>
+          </div>
+        </article>
       </section>
 
       <section class="card compact-card">
         <details>
           <summary>Configuración avanzada</summary>
+          <div class="advanced">
+            <label>
+              <span>Repositorio objetivo</span>
+              <input
+                id="target-repository"
+                type="text"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder="owner/repository"
+              />
+            </label>
+            <button id="save-target-repository" class="button secondary" type="button">
+              Guardar
+            </button>
+          </div>
+          <p class="muted small">
+            El launcher aprende este valor del Codespace seleccionado. Se guarda solo en este
+            dispositivo para poder recrear el entorno si el Codespace anterior ya no existe.
+          </p>
+
           <div class="advanced">
             <label>
               <span>Dominio de forwarded ports</span>

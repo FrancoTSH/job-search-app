@@ -21,7 +21,13 @@ The token is sent only in the `Authorization` header of requests to `https://api
 
 The service worker ignores cross-origin requests and therefore does not cache GitHub API responses.
 
-Use the minimum GitHub permissions documented in `README.md`.
+Use the minimum GitHub permissions documented in `README.md`. Codespace creation requires
+the repository-scoped `Codespaces: write` permission; lifecycle start/stop remains covered by
+`Codespaces lifecycle admin: write`.
+
+The private target repository name may be stored in browser `localStorage` so the PWA can
+recreate the environment after deletion. It is never committed to this public repository or
+sent anywhere except the GitHub Codespaces API path selected by the user.
 
 ## Dependencies
 

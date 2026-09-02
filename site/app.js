@@ -1,20 +1,31 @@
 import {
+  DEFAULT_CODESPACE_REF,
+  DEFAULT_DEVCONTAINER_PATH,
   DEFAULT_PORT_DOMAIN,
   GITHUB_API_BASE,
   GITHUB_API_VERSION,
+  TARGET_IDLE_TIMEOUT_MINUTES,
+  buildCodespaceCreatePayload,
+  codespaceCreatePath,
+  codespaceDefaultsPath,
   codespaceStateLabel,
+  hasSufficientIdleTimeout,
   isAvailableState,
   isStoppedState,
   isTerminalErrorState,
   normalizeCodespace,
   privateWebUiUrl,
   retryDelayMs,
+  sanitizeRepositoryFullName,
   stateTone,
 } from "./lib.js";
 
 const TOKEN_KEY = "job-search-launcher-token";
 const SELECTED_KEY = "job-search-launcher-selected";
 const DOMAIN_KEY = "job-search-launcher-port-domain";
+const TARGET_REPOSITORY_KEY = "job-search-launcher-target-repository";
+const TARGET_MACHINE_KEY = "job-search-launcher-target-machine";
+const TARGET_DEVCONTAINER_KEY = "job-search-launcher-target-devcontainer";
 
 const ui = {
   authCard: document.querySelector("#auth-card"),
@@ -29,12 +40,20 @@ const ui = {
   selectedName: document.querySelector("#selected-name"),
   selectedState: document.querySelector("#selected-state"),
   selectedLastUsed: document.querySelector("#selected-last-used"),
+  selectedIdleTimeout: document.querySelector("#selected-idle-timeout"),
+  selectedMachine: document.querySelector("#selected-machine"),
+  createCard: document.querySelector("#create-card"),
+  createRepo: document.querySelector("#create-repo"),
+  createDetail: document.querySelector("#create-detail"),
+  create: document.querySelector("#create"),
   start: document.querySelector("#start"),
   open: document.querySelector("#open"),
   stop: document.querySelector("#stop"),
   status: document.querySelector("#status"),
   statusTitle: document.querySelector("#status-title"),
   statusDetail: document.querySelector("#status-detail"),
+  targetRepository: document.querySelector("#target-repository"),
+  saveTargetRepository: document.querySelector("#save-target-repository"),
   portDomain: document.querySelector("#port-domain"),
   saveDomain: document.querySelector("#save-domain"),
   online: document.querySelector("#online-indicator"),
@@ -43,6 +62,10 @@ const ui = {
 let token = sessionStorage.getItem(TOKEN_KEY) || "";
 let codespaces = [];
 let selectedName = localStorage.getItem(SELECTED_KEY) || "";
+let targetRepository = localStorage.getItem(TARGET_REPOSITORY_KEY) || "";
+let rememberedMachine = localStorage.getItem(TARGET_MACHINE_KEY) || "";
+let rememberedDevcontainer =
+  localStorage.getItem(TARGET_DEVCONTAINER_KEY) || DEFAULT_DEVCONTAINER_PATH;
 let busy = false;
 let installPrompt = null;
 
@@ -54,7 +77,15 @@ function setStatus(title, detail = "", tone = "neutral") {
 
 function setBusy(value) {
   busy = value;
-  for (const button of [ui.connect, ui.refresh, ui.start, ui.open, ui.stop]) {
+  for (const button of [
+    ui.connect,
+    ui.refresh,
+    ui.create,
+    ui.start,
+    ui.open,
+    ui.stop,
+    ui.saveTargetRepository,
+  ]) {
     button.disabled = value;
   }
   ui.codespaceSelect.disabled = value;
@@ -62,6 +93,30 @@ function setBusy(value) {
 
 function selectedCodespace() {
   return codespaces.find((item) => item.name === selectedName) || null;
+}
+
+function targetCodespaces() {
+  if (!targetRepository) return [];
+  return codespaces.filter((item) => item.repository === targetRepository);
+}
+
+function suitableTargetCodespace() {
+  return targetCodespaces().find((item) => hasSufficientIdleTimeout(item)) || null;
+}
+
+function rememberTargetFromCodespace(item) {
+  if (!item?.repository) return;
+  targetRepository = sanitizeRepositoryFullName(item.repository);
+  localStorage.setItem(TARGET_REPOSITORY_KEY, targetRepository);
+
+  if (item.machineName) {
+    rememberedMachine = item.machineName;
+    localStorage.setItem(TARGET_MACHINE_KEY, rememberedMachine);
+  }
+  if (item.devcontainerPath) {
+    rememberedDevcontainer = item.devcontainerPath;
+    localStorage.setItem(TARGET_DEVCONTAINER_KEY, rememberedDevcontainer);
+  }
 }
 
 function formatDate(value) {
@@ -108,7 +163,7 @@ async function apiRequest(path, init = {}) {
     }
     if (response.status === 403) {
       throw new Error(
-        "El token no tiene permisos suficientes para administrar el Codespace seleccionado.",
+        "El token no tiene permisos suficientes. Para crear y administrar el entorno necesita Codespaces: Read and write y Codespaces lifecycle admin: Read and write.",
       );
     }
     if (response.status === 404) {
@@ -116,6 +171,11 @@ async function apiRequest(path, init = {}) {
     }
     if (response.status === 409) {
       throw new Error("GitHub rechazó la transición de estado del Codespace. Actualiza e inténtalo de nuevo.");
+    }
+    if (response.status === 422) {
+      throw new Error(
+        "GitHub rechazó la configuración del Codespace. Verifica el repositorio, permisos y límites de Codespaces.",
+      );
     }
     throw new Error(`GitHub API respondió HTTP ${response.status}.`);
   }
@@ -144,6 +204,45 @@ async function transition(name, action) {
   );
   const normalized = normalizeCodespace(body);
   return normalized || getCodespace(name);
+}
+
+async function getCreateDefaults(repository) {
+  return apiRequest(codespaceDefaultsPath(repository, DEFAULT_CODESPACE_REF));
+}
+
+async function createCodespace(repository) {
+  const defaults = await getCreateDefaults(repository);
+  const selected = selectedCodespace();
+  const source =
+    selected?.repository === repository
+      ? selected
+      : targetCodespaces().find((item) => item.machineName || item.devcontainerPath) || null;
+
+  const devcontainerPath =
+    (typeof defaults?.defaults?.devcontainer_path === "string" &&
+      defaults.defaults.devcontainer_path) ||
+    source?.devcontainerPath ||
+    rememberedDevcontainer ||
+    DEFAULT_DEVCONTAINER_PATH;
+
+  const machine = source?.machineName || rememberedMachine || null;
+  const payload = buildCodespaceCreatePayload({
+    ref: DEFAULT_CODESPACE_REF,
+    idleTimeoutMinutes: TARGET_IDLE_TIMEOUT_MINUTES,
+    devcontainerPath,
+    machine,
+    displayName: "Job Search",
+  });
+
+  const body = await apiRequest(codespaceCreatePath(repository), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const normalized = normalizeCodespace(body);
+  if (!normalized) throw new Error("GitHub devolvió un Codespace recién creado inválido.");
+  return normalized;
 }
 
 function replaceCodespace(item) {
@@ -198,6 +297,16 @@ function renderSelected() {
   ui.selectedState.textContent = codespaceStateLabel(current.state);
   ui.selectedState.dataset.tone = stateTone(current.state);
   ui.selectedLastUsed.textContent = formatDate(current.lastUsedAt);
+  ui.selectedIdleTimeout.textContent =
+    current.idleTimeoutMinutes == null
+      ? "—"
+      : `${current.idleTimeoutMinutes} min${
+          hasSufficientIdleTimeout(current) ? "" : " · insuficiente"
+        }`;
+  ui.selectedMachine.textContent =
+    current.machineCpus
+      ? `${current.machineCpus} cores`
+      : current.machineName || "—";
 
   ui.start.hidden = isAvailableState(current.state);
   ui.start.textContent = isStoppedState(current.state)
@@ -206,6 +315,27 @@ function renderSelected() {
 
   ui.open.hidden = !isAvailableState(current.state);
   ui.stop.hidden = !isAvailableState(current.state);
+}
+
+function renderCreateCard() {
+  const suitable = suitableTargetCodespace();
+  const canCreate = Boolean(token && targetRepository && !suitable);
+
+  ui.createCard.hidden = !canCreate;
+  if (!canCreate) return;
+
+  ui.createRepo.textContent = targetRepository;
+  const existing = targetCodespaces()[0] || null;
+  ui.createDetail.textContent = existing
+    ? `El Codespace existente tiene ${existing.idleTimeoutMinutes ?? "un"} timeout insuficiente. El reemplazo conservará la máquina cuando GitHub lo permita.`
+    : `Se creará desde ${DEFAULT_CODESPACE_REF} con timeout de ${TARGET_IDLE_TIMEOUT_MINUTES} minutos.`;
+  ui.create.textContent = existing
+    ? `Crear reemplazo de ${TARGET_IDLE_TIMEOUT_MINUTES} min`
+    : `Crear Codespace de ${TARGET_IDLE_TIMEOUT_MINUTES} min`;
+}
+
+function renderTargetConfig() {
+  ui.targetRepository.value = targetRepository;
 }
 
 function renderAuth() {
@@ -222,6 +352,8 @@ function renderAll() {
   renderAuth();
   renderSelect();
   renderSelected();
+  renderCreateCard();
+  renderTargetConfig();
 }
 
 async function refreshCodespaces({ quiet = false } = {}) {
@@ -229,6 +361,10 @@ async function refreshCodespaces({ quiet = false } = {}) {
   if (!quiet) setStatus("Consultando GitHub…", "Leyendo tus Codespaces.", "warning");
 
   codespaces = await listCodespaces();
+
+  const current = selectedCodespace();
+  if (current) rememberTargetFromCodespace(current);
+
   renderAll();
 
   if (!quiet) {
@@ -236,13 +372,19 @@ async function refreshCodespaces({ quiet = false } = {}) {
       "Codespaces actualizados",
       codespaces.length
         ? "Selecciona el Codespace que contiene la UI privada."
-        : "No hay Codespaces disponibles para este token.",
+        : targetRepository
+          ? "No hay Codespaces disponibles. Puedes crear el entorno administrado desde este launcher."
+          : "No hay Codespaces disponibles. Configura el repositorio objetivo en Configuración avanzada.",
       "success",
     );
   }
 }
 
-async function pollUntil(name, predicate, { timeoutMs = 5 * 60 * 1000 } = {}) {
+async function pollUntil(
+  name,
+  predicate,
+  { timeoutMs = 5 * 60 * 1000, timeoutLabel = "5 minutos" } = {},
+) {
   const started = Date.now();
   let attempt = 0;
 
@@ -266,7 +408,7 @@ async function pollUntil(name, predicate, { timeoutMs = 5 * 60 * 1000 } = {}) {
     attempt += 1;
   }
 
-  throw new Error("El Codespace no alcanzó el estado esperado dentro de 5 minutos.");
+  throw new Error(`El Codespace no alcanzó el estado esperado dentro de ${timeoutLabel}.`);
 }
 
 function currentPortDomain() {
@@ -306,6 +448,58 @@ async function startAndOpen() {
     // Give post-start services a small grace period after GitHub reports Available.
     await new Promise((resolve) => setTimeout(resolve, 2500));
     openPrivateUi(latest.name);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function createAndOpen() {
+  if (!targetRepository) {
+    throw new Error("Configura primero el repositorio objetivo en Configuración avanzada.");
+  }
+
+  const existingSuitable = suitableTargetCodespace();
+  if (existingSuitable) {
+    selectedName = existingSuitable.name;
+    localStorage.setItem(SELECTED_KEY, selectedName);
+    renderAll();
+    return startAndOpen();
+  }
+
+  setBusy(true);
+  try {
+    setStatus(
+      "Creando Codespace…",
+      `GitHub está creando el entorno desde ${DEFAULT_CODESPACE_REF} con timeout de ${TARGET_IDLE_TIMEOUT_MINUTES} minutos.`,
+      "warning",
+    );
+
+    let created = await createCodespace(targetRepository);
+    replaceCodespace(created);
+    selectedName = created.name;
+    localStorage.setItem(SELECTED_KEY, selectedName);
+    rememberTargetFromCodespace(created);
+    renderAll();
+
+    if (!isAvailableState(created.state)) {
+      created = await pollUntil(created.name, (item) => isAvailableState(item.state), {
+        timeoutMs: 15 * 60 * 1000,
+        timeoutLabel: "15 minutos",
+      });
+    }
+
+    replaceCodespace(created);
+    rememberTargetFromCodespace(created);
+    renderAll();
+
+    setStatus(
+      "Codespace creado",
+      `Entorno disponible con timeout objetivo de ${TARGET_IDLE_TIMEOUT_MINUTES} minutos. Abriendo la UI privada.`,
+      "success",
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    openPrivateUi(created.name);
   } finally {
     setBusy(false);
   }
@@ -396,11 +590,17 @@ ui.refresh.addEventListener("click", () =>
 
 ui.codespaceSelect.addEventListener("change", () => {
   selectedName = ui.codespaceSelect.value;
-  if (selectedName) localStorage.setItem(SELECTED_KEY, selectedName);
-  else localStorage.removeItem(SELECTED_KEY);
-  renderSelected();
+  if (selectedName) {
+    localStorage.setItem(SELECTED_KEY, selectedName);
+    const current = selectedCodespace();
+    if (current) rememberTargetFromCodespace(current);
+  } else {
+    localStorage.removeItem(SELECTED_KEY);
+  }
+  renderAll();
 });
 
+ui.create.addEventListener("click", () => runAction(createAndOpen));
 ui.start.addEventListener("click", () => runAction(startAndOpen));
 ui.open.addEventListener("click", () => {
   const current = selectedCodespace();
@@ -408,6 +608,29 @@ ui.open.addEventListener("click", () => {
   runAction(async () => openPrivateUi(current.name));
 });
 ui.stop.addEventListener("click", () => runAction(stopSelected));
+
+ui.saveTargetRepository.addEventListener("click", () =>
+  runAction(async () => {
+    const value = sanitizeRepositoryFullName(ui.targetRepository.value);
+    const changed = value !== targetRepository;
+    targetRepository = value;
+    localStorage.setItem(TARGET_REPOSITORY_KEY, targetRepository);
+
+    if (changed) {
+      rememberedMachine = "";
+      rememberedDevcontainer = DEFAULT_DEVCONTAINER_PATH;
+      localStorage.removeItem(TARGET_MACHINE_KEY);
+      localStorage.removeItem(TARGET_DEVCONTAINER_KEY);
+    }
+
+    renderAll();
+    setStatus(
+      "Repositorio objetivo guardado",
+      "Solo se almacena en este dispositivo y se usa para crear o reutilizar el Codespace del asistente.",
+      "success",
+    );
+  }),
+);
 
 ui.saveDomain.addEventListener("click", () =>
   runAction(async () => {
@@ -467,6 +690,7 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+ui.targetRepository.value = targetRepository;
 ui.portDomain.value = currentPortDomain();
 updateOnlineStatus();
 renderAll();

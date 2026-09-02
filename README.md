@@ -38,10 +38,14 @@ Recommended token boundary:
 1. resource owner: your GitHub account;
 2. repository access: only the private assistant repository;
 3. repository permissions:
-   - **Codespaces: Read-only**
+   - **Codespaces: Read and write**
    - **Codespaces lifecycle admin: Read and write**
 
 The launcher does not need Contents, Issues, Pull requests, Actions, Administration, or workflow permissions.
+
+`Codespaces: write` is used only to create the managed Codespace through GitHub's official API.
+The target private repository name is learned from an existing selected Codespace or configured
+on-device and stored only in localStorage; it is not hard-coded in this public repository.
 
 ## Lifecycle flow
 
@@ -50,6 +54,9 @@ open public PWA
   -> provide session token
   -> GET /user/codespaces
   -> select private assistant Codespace
+  -> if no suitable Codespace exists, POST /repos/<owner>/<repo>/codespaces
+       with ref=main, devcontainer_path=.devcontainer/devcontainer.json
+       and idle_timeout_minutes=150
   -> POST /user/codespaces/<name>/start when stopped
   -> poll GET /user/codespaces/<name>
   -> state == Available
@@ -59,6 +66,11 @@ open public PWA
 The private forwarded port remains authenticated by GitHub. The public PWA does not proxy, mirror, or embed the private UI.
 
 A **Stop Codespace** action is also provided for cost/resource control.
+
+The launcher treats a Codespace with an idle timeout below 150 minutes as unsuitable for
+long-running search/rank workflows and offers to create a replacement. It never deletes the old
+Codespace automatically. When replacing an existing environment it reuses the observed machine
+type when GitHub exposes it; otherwise GitHub's repository/account default machine is used.
 
 ## Forwarded-port domain
 

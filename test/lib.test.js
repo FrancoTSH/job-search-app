@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  TARGET_IDLE_TIMEOUT_MINUTES,
+  buildCodespaceCreatePayload,
+  codespaceCreatePath,
+  codespaceDefaultsPath,
   codespaceStateLabel,
+  hasSufficientIdleTimeout,
   isAvailableState,
   isStoppedState,
   normalizeCodespace,
@@ -10,6 +15,7 @@ import {
   retryDelayMs,
   sanitizeCodespaceName,
   sanitizePortDomain,
+  sanitizeRepositoryFullName,
   stateTone,
 } from "../site/lib.js";
 
@@ -46,6 +52,10 @@ test("normalizes only bounded lifecycle metadata", () => {
     repository: "private-owner/private-repo",
     lastUsedAt: "2026-08-31T12:00:00Z",
     webUrl: "https://sample-space-123.github.dev",
+    idleTimeoutMinutes: null,
+    machineName: null,
+    machineCpus: null,
+    devcontainerPath: null,
   });
 });
 
@@ -60,4 +70,56 @@ test("handles lifecycle state semantics", () => {
 test("retry polling delay remains bounded", () => {
   assert.equal(retryDelayMs(0), 1800);
   assert.ok(retryDelayMs(50) <= 5000);
+});
+
+
+test("validates target repository and builds scoped creation paths", () => {
+  assert.equal(
+    sanitizeRepositoryFullName("owner/private-repo"),
+    "owner/private-repo",
+  );
+  assert.throws(() => sanitizeRepositoryFullName("../repo"));
+  assert.throws(() => sanitizeRepositoryFullName("owner/repo/extra"));
+  assert.equal(
+    codespaceCreatePath("owner/private-repo"),
+    "/repos/owner/private-repo/codespaces",
+  );
+  assert.equal(
+    codespaceDefaultsPath("owner/private-repo", "main"),
+    "/repos/owner/private-repo/codespaces/new?ref=main",
+  );
+});
+
+test("builds a bounded 150-minute managed Codespace payload", () => {
+  const payload = buildCodespaceCreatePayload({
+    machine: "basicLinux32gb",
+  });
+  assert.equal(payload.ref, "main");
+  assert.equal(payload.idle_timeout_minutes, TARGET_IDLE_TIMEOUT_MINUTES);
+  assert.equal(payload.devcontainer_path, ".devcontainer/devcontainer.json");
+  assert.equal(payload.machine, "basicLinux32gb");
+  assert.throws(() =>
+    buildCodespaceCreatePayload({ idleTimeoutMinutes: 241 }),
+  );
+});
+
+test("normalizes creation metadata and detects sufficient idle timeout", () => {
+  const normalized = normalizeCodespace({
+    name: "sample-space-456",
+    state: "Available",
+    repository: { full_name: "owner/private-repo" },
+    idle_timeout_minutes: 150,
+    machine: { name: "basicLinux32gb", cpus: 2 },
+    devcontainer_path: ".devcontainer/devcontainer.json",
+  });
+
+  assert.equal(normalized.idleTimeoutMinutes, 150);
+  assert.equal(normalized.machineName, "basicLinux32gb");
+  assert.equal(normalized.machineCpus, 2);
+  assert.equal(normalized.devcontainerPath, ".devcontainer/devcontainer.json");
+  assert.equal(hasSufficientIdleTimeout(normalized), true);
+  assert.equal(
+    hasSufficientIdleTimeout({ idleTimeoutMinutes: 30 }),
+    false,
+  );
 });
